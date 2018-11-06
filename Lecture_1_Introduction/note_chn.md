@@ -77,7 +77,7 @@
   * 你提出一个想法并与我们一起实现
   * 编码，简短的介绍，在最后一天演示
 
-##### 实验分数取决于你通过的测试用例数量，我们给你提供测试用例来判断你的实验是否做的足够好。注意：假如大部分的提交都成功，偶尔会失败，那么大概率当你线上运行的时候会失败
+实验分数取决于你通过的测试用例数量，我们给你提供测试用例来判断你的实验是否做的足够好。注意：假如大部分的提交都成功，偶尔会失败，那么大概率当你线上运行的时候会失败
 
 ##### Debug会花费很多时间
   * 尽早开始
@@ -150,32 +150,38 @@
 ### MapReduce的抽象视图
   * 输入被分为M个文件
   * [ 示意图: maps函数生成键值对形式的行数据， reduces函数消费列数据 ]
-        
-        Input1 -> Map -> a,1 b,1 c,1
-        Input2 -> Map ->     b,1
-        Input3 -> Map -> a,1     c,1
-                          |   |   |
-                          |   |   -> Reduce -> c,2
-                          |   -----> Reduce -> b,2
-                          ---------> Reduce -> a,2
-  
+
+    ```
+      Input1 -> Map -> a,1 b,1 c,1
+      Input2 -> Map ->     b,1
+      Input3 -> Map -> a,1     c,1
+                        |   |   |
+                        |   |   -> Reduce -> c,2
+                        |   -----> Reduce -> b,2
+                        ---------> Reduce -> a,2
+    ```
+
   * MR为每个输入文件调用Map()函数，生成中间数据集<k2,v2>，每次Map()函数调用都是一个“任务”
   * MR收集中间数据集里某个给定k2对应的所有v2，并把他们作为参数传递给Reduce函数
   * 最后的输出是Reduce()函数产生的数据集<k3,v3>，保存在R个输出文件里
   * [ 示意图: MapReduce API ]
-        
-        map(k1, v1) -> list(k2, v2)
-        reduce(k2, list(v2)) -> list(k2, v3)
+
+    ```    
+      map(k1, v1) -> list(k2, v2)
+      reduce(k2, list(v2)) -> list(k2, v3)
+    ```
 
 ### 例子: 词频统计
   * 输入是成千上万个文本文件
-  
-        Map(k, v)
-          split v into words
-          for each word w
-            emit(w, "1")
-        Reduce(k, v)
-          emit(len(v))
+
+    ```
+      Map(k, v)
+        split v into words
+        for each word w
+          emit(w, "1")
+      Reduce(k, v)
+        emit(len(v))
+    ```
 
 ### MapReduce隐藏了繁琐的细节:
   * 在各个服务器上启动程序
@@ -195,18 +201,20 @@
   * CPU? 内存? 磁盘? 网络?
   * 2004年，“网络带宽”成为了MapReduce的作者们提升性能的瓶颈
     - [ 示意图: 服务器集群, 网络交换机树状图 ]
-    
-          Map->Reduce随机洗牌过中所有的数据都通过网络传输
-          论文里交换机根节点：100 到 200 G bit/s
-          1800个服务器节点，所以每台服务器分到的带宽是 55 M bit/s
-          这个带宽太小了，远远小于当时的磁盘IO (~50-100 MB/s) 和 RAM 的速度
+
+      ```
+        Map->Reduce随机洗牌过中所有的数据都通过网络传输
+        论文里交换机根节点：100 到 200 G bit/s
+        1800个服务器节点，所以每台服务器分到的带宽是 55 M bit/s
+        这个带宽太小了，远远小于当时的磁盘IO (~50-100 MB/s) 和 RAM 的速度
+      ```
   
   * 于是他们关注的是最小化数据在网络内的流动(今时今日数据中心的网络速度已经远远超过当时的水平)
 
 ### 更多细节 (论文中 图 1):
   * master节点：分配任务给worker节点，记住中产出的位置
   * M个Map任务，R个Reduce任务
-  * 输入存储在GFS(Google File System)，每个输入文件都有3个副本
+  * 输入存储在GFS(Global File System)，每个输入文件都有3个副本
   * 所有服务器上都运行着GFS和MR workers
   * 输入任务远大于worker数量
   * master给每个worker分配一个Map任务，当该Map任务完成再分配一个新的Map任务
@@ -229,82 +237,91 @@
   * [ 示意图: 将长度不确定的任务分配给各个节点 ]
   * 解决方案: 让任务数量远大于节点数量
     - Master将新任务分配给完成任务的worker
-    - 于是没有任务能主宰完成时间
-    - 于是处理任务快的节点会比慢的节点处理更多的任务，并跟慢的节点几乎同时结束
+    - 于是没有单一任务能主宰完成时间
+    - 于是处理任务快的节点会比慢的节点处理更多的任务，并且跟慢的节点几乎同时结束
 
-What about fault tolerance?
-  I.e. what if a server crashes during a MR job?
-  Hiding failures is a huge part of ease of programming!
-  Q: Why not re-start the whole job from the beginning?
-  MR re-runs just the failed Map()s and Reduce()s.
-    MR requires them to be pure functions:
-      they don't keep state across calls,
-      they don't read or write files other than expected MR inputs/outputs,
-      there's no hidden communication among tasks.
-    So re-execution yields the same output.
-  The requirement for pure functions is a major limitation of
-    MR compared to other parallel programming schemes.
-    But it's critical to MR's simplicity.
+### 那么容错呢？
+  * 比如说其中一台服务器在MR过程中宕机了呢？
+  * 使失败不对外可见是保证框架易用性很重要的一部分工作！
+  * 问题：为什么不从头开始整个作业呢？
+  * MR仅仅会重新运行失败的Map()和Reduce()任务
+    - MR要求Map()和Reduce()是纯函数，这意味着：
+      * 他们在被调用时不记录状态
+      * 他们不会读取或写入除MR输入和输出以外的文件
+      * 任务之间没有相互通信
+    - 以此来保证重新执行会产出一样的结果
+  * 相比其他并行计算方案，MR要求Map()和Reduce()是纯函数，这是MR主要的局限所在，但这对于保证MR的简易性至关重要
 
-Details of worker crash recovery:
-  * Map worker crashes:
-    master sees worker no longer responds to pings
-    crashed worker's intermediate Map output is lost
-      but is likely needed by every Reduce task!
-    master re-runs, spreads tasks over other GFS replicas of input.
-    some Reduce workers may already have read failed worker's intermediate data.
-      here we depend on functional and deterministic Map()!
-    master need not re-run Map if Reduces have fetched all intermediate data
-      though then a Reduce crash would then force re-execution of failed Map
-  * Reduce worker crashes.
-    finshed tasks are OK -- stored in GFS, with replicas.
-    master re-starts worker's unfinished tasks on other workers.
-  * Reduce worker crashes in the middle of writing its output.
-    GFS has atomic rename that prevents output from being visible until complete.
-    so it's safe for the master to re-run the Reduce tasks somewhere else.
+### 详细介绍worker如何从宕机中恢复：
+  * Map worker宕机:
+    - master发现worker不在响应ping请求
+    - 已宕机的worker的Map()任务输出丢失了，后续的Reduce()任务很可能会依赖于这一中间数据
+    - master基于输入在GFS里的其他副本重新分发任务
+    - 部分Reduce worker可能已经读入已宕机worker的中间数据，我们靠Map()函数的纯函数性质来保证两次运行结果一致
+    - 如果Reduce worker已经读入所有中间数据，master不需要重新运行Map()任务，但假如Reduce()任务失败了，那依赖的失败的Map()任务必须重新运行。
+  * Reduce worker宕机:
+    - 已完成的任务不受影响 -- 保存在GFS里，并且有副本
+    - master将还未完成的任务分配给别的worker执行
+  * Reduce worker在输出结果的过程中宕机:
+    - GFS的重命名具有原子性，在输出完成前对外不可见
+    - 所以master将Reduce()任务分配给别的worker执行是安全的
 
-Other failures/problems:
-  * What if the master gives two workers the same Map() task?
-    perhaps the master incorrectly thinks one worker died.
-    it will tell Reduce workers about only one of them.
-  * What if the master gives two workers the same Reduce() task?
-    they will both try to write the same output file on GFS!
-    atomic GFS rename prevents mixing; one complete file will be visible.
-  * What if a single worker is very slow -- a "straggler"?
-    perhaps due to flakey hardware.
-    master starts a second copy of last few tasks.
-  * What if a worker computes incorrect output, due to broken h/w or s/w?
-    too bad! MR assumes "fail-stop" CPUs and software.
-  * What if the master crashes?
-    recover from check-point, or give up on job
+### 其他失败/问题:
+  * 如果master将同一个Map()任务分配给两个worker了怎么办？
+    - 可能master错误地认为其中一个worker宕机了
+    - master只会将其中一个worker产生的Map()结果传递给Reduce worker
+  * 如果master将同一个Reduce()任务分配给两个worker了怎么办？
+    - 两个worker都会尝试把相同的结果输出到GFS！
+    - GFS重命名的原子性保证了两次输出结果不会混起来，只有一次结果最后对外可见
+  * 如果某一个worker特别慢 -- 一个“拖后腿的”？
+    - 可能是因为硬件有问题
+    - master会将最后几个任务重新分发一次
+  * 如果某一个worker由于硬件或者软件问题产生了错误的结果怎么办？
+    - 那太糟糕了！MR默认worker的硬件和软件是正常工作的
+  * 如果master宕机了怎么办？
+    - 读取记录点恢复作业，或者放弃这次作业
 
-For what applications *doesn't* MapReduce work well?
-  Not everything fits the map/shuffle/reduce pattern.
-  Small data, since overheads are high. E.g. not web site back-end.
-  Small updates to big data, e.g. add a few documents to a big index
-  Unpredictable reads (neither Map nor Reduce can choose input)
-  Multiple shuffles, e.g. page-rank (can use multiple MR but not very efficient)
-  More flexible systems allow these, but more complex model.
+### MapReduce不适用于什么样的应用场景？
+  * 并不是所有的任务都适合 map/shuffle/reduce 的模式
+  * 处理小量数据时，比如非网站后端应用，因为固定开销太大
+  * 对大量数据的小量更新时，比如往一张大表里插入几条数据
+  * 输入不可预期时 (Map和Reduce都不能自由选择输入)
+  * 需要多次随机洗牌时，比如网页排序 (可以使用多个MR系统来解决这个问题，但是效率不高)
+  * 更自由的系统需要使用更复杂的模型才能使用MR
 
-How might a real-world web company use MapReduce?
-  "CatBook", a new company running a social network for cats; needs to:
-  1) build a search index, so people can find other peoples' cats
-  2) analyze popularity of different cats, to decide advertising value
-  3) detect dogs and remove their profiles
-  Can use MapReduce for all these purposes!
-  - run large batch jobs over all profiles every night
-  1) build inverted index: map(profile text) -> (word, cat_id)
-                           reduce(word, list(cat_id) -> list(word, list(cat_id))
-  2) count profile visits: map(web logs) -> (cat_id, "1")
-                           reduce(cat_id, list("1")) -> list(cat_id, count)
-  3) filter profiles: map(profile image) -> img analysis -> (cat_id, "dog!")
-                      reduce(cat_id, list("dog!")) -> list(cat_id)
+### 现实中互联网公司是如何使用MapReduce的?
+  * "CatBook"是一个做猫咪社交网络的公司，他们需要:
+    - 1) 建立一个搜索索引，让人们可以找到其他人的猫
+    - 2) 分析不同猫的受欢迎程度，以此来决定它们的广告价值
+    - 3) 检测狗的存在并删除他们的账号
+  * 可以用MapReduce来实现所有需求！
+  * 每天晚上运行批量任务处理所有账号
+    - 1) 建立倒排索引:
 
-Conclusion
-  MapReduce single-handedly made big cluster computation popular.
-  - Not the most efficient or flexible.
-  + Scales well.
-  + Easy to program -- failures and data movement are hidden.
-  These were good trade-offs in practice.
-  We'll see some more advanced successors later in the course.
-  Have fun with the lab!
+      ```
+        map(profile text) -> (word, cat_id)
+        reduce(word, list(cat_id) -> list(word, list(cat_id))
+      ```
+
+    - 2) 统计账号访问情况:
+
+      ```
+        map(web logs) -> (cat_id, "1")
+        reduce(cat_id, list("1")) -> list(cat_id, count)
+      ```
+
+    - 3) 过滤账号:
+
+      ```
+        map(profile image) -> img analysis -> (cat_id, "dog!")
+        reduce(cat_id, list("dog!")) -> list(cat_id)
+      ```
+
+### 结论
+  * MapReduce以一己之力让大集群计算变得流行
+  * MapReduce并不是最高效或者最灵活的分布式计算架构
+  * MapReduce拥有很好的可扩展性
+  * MapReduce是一个简单易用的框架 -- 失败和数据流转都被框架封装了
+  * 这些都是现实中需要权衡的因素
+  * 我们将在本课程中看到更加先进的后继者
+  * 祝你们在实验课玩得开心！
